@@ -11,27 +11,6 @@ import (
 	_ "gocloud.dev/runtimevar/gcpruntimeconfig"
 )
 
-type RuntimeConfig struct {
-	config map[string]string
-	rw     sync.RWMutex
-}
-
-func (rc *RuntimeConfig) write(key string, value string) {
-	rc.rw.Lock()
-	rc.config[key] = value
-	rc.rw.Unlock()
-}
-
-func (rc *RuntimeConfig) read(key string) string {
-	rc.rw.RLock()
-	defer rc.rw.RUnlock()
-	return rc.config[key]
-}
-
-var rc *RuntimeConfig = &RuntimeConfig{
-	config: make(map[string]string, 1),
-}
-
 var (
 	prj = os.Getenv("PROJECT")
 	cfg = os.Getenv("CONFIG")
@@ -41,22 +20,13 @@ var (
 func main() {
 	fmt.Println("starting program...")
 
-	// runtimevar.OpenVariable creates a *runtimevar.Variable from a URL.
-	// The URL Host+Path are used as the GCP Runtime Configurator Variable key;
-	// see https://cloud.google.com/deployment-manager/runtime-configurator/
-	// for more details.
-	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-	defer cancel()
-	v, err := runtimevar.OpenVariable(ctx, "gcpruntimeconfig://projects/"+prj+"/configs/"+cfg+"/variables/"+vrb+"?decoder=string")
-	if err != nil {
-		e := fmt.Errorf("unable to open variable: %v", err)
-		fmt.Println(e)
-		return
+	rc := &RuntimeConfig{
+		config: make(map[string]string, 1),
 	}
-	defer v.Close()
 
-	watch(v)
-	periodicallyPrint()
+	rc.watch()
+	defer rc.variable.Close()
+	periodicallyPrint(rc)
 
 	var st time.Duration = 120 * time.Second
 	fmt.Printf("ending program in %v...\n", st)
@@ -66,13 +36,44 @@ func main() {
 }
 
 // periodicallyPrint periodically prints the config value.
-func periodicallyPrint() {
+func periodicallyPrint(rc *RuntimeConfig) {
 	ticker := time.NewTicker(1 * time.Second)
 	go func() {
 		for range ticker.C {
 			fmt.Printf("(goroutine)config key: %+v, value: %+v\n", vrb, rc.read(vrb))
 		}
 	}()
+}
+
+type RuntimeConfig struct {
+	variable *runtimevar.Variable
+	config   map[string]string
+	rw       sync.RWMutex
+}
+
+// initVariable initializes the variable in the RuntimeConfig.
+func (rc *RuntimeConfig) initVariable(ctx context.Context) error {
+	v, err := runtimevar.OpenVariable(ctx, "gcpruntimeconfig://projects/"+prj+"/configs/"+cfg+"/variables/"+vrb+"?decoder=string")
+	if err != nil {
+		return err
+	}
+
+	rc.variable = v
+	return nil
+}
+
+// write writes the value for the given key in the RuntimeConfig.
+func (rc *RuntimeConfig) write(key string, value string) {
+	rc.rw.Lock()
+	rc.config[key] = value
+	rc.rw.Unlock()
+}
+
+// read returns the value associated with the given key in the RuntimeConfig.
+func (rc *RuntimeConfig) read(key string) string {
+	rc.rw.RLock()
+	defer rc.rw.RUnlock()
+	return rc.config[key]
 }
 
 // watch Call Watch in a loop from a background goroutine to see all changes,
@@ -85,13 +86,29 @@ func periodicallyPrint() {
 // an error from Watch doesn't mean that Latest will return one.
 //
 // Maybe add time.Sleep(3 * time.Second) after finished this function to make sure config is
-// loaded or call this function after finished executing v.Latest(ctx) and store the value in a variable.
-func watch(v *runtimevar.Variable) {
+// loaded or call this function after finished executing variable.Latest(ctx) and store the value in a variable.
+func (rc *RuntimeConfig) watch() {
+
+	// runtimevar.OpenVariable creates a *runtimevar.Variable from a URL.
+	// The URL Host+Path are used as the GCP Runtime Configurator Variable key;
+	// see https://cloud.google.com/deployment-manager/runtime-configurator/
+	// for more details.
+
+	if rc.variable == nil {
+		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+		defer cancel()
+		err := rc.initVariable(ctx)
+		if err != nil {
+			fmt.Printf("Error initializing variable: %v", err)
+			return
+		}
+	}
+
 	go func() {
 		for {
-			snapshot, err := v.Watch(context.Background())
+			snapshot, err := rc.variable.Watch(context.Background())
 			if err == runtimevar.ErrClosed {
-				// v has been closed; exit.
+				// variable has been closed; exit.
 				return
 			}
 			if err == nil {
@@ -100,7 +117,7 @@ func watch(v *runtimevar.Variable) {
 			} else {
 				fmt.Printf("Error loading config: %v", err)
 				// Even though there's been an error loading the config,
-				// v.Latest will continue to return the latest "good" value.
+				// variable.Latest will continue to return the latest "good" value.
 			}
 		}
 	}()
