@@ -67,7 +67,7 @@ func main() {
 
 	fmt.Printf("(main)config key: %+v, value: %+v\n", vrb, rc.read(vrb))
 
-	var st time.Duration = 30 * time.Second
+	var st time.Duration = 120 * time.Second
 	fmt.Printf("ending program in %v...\n", st)
 	time.Sleep(st)
 
@@ -107,24 +107,20 @@ func periodicallyPrint() {
 // Note that Latest always returns the latest "good" config, so seeing
 // an error from Watch doesn't mean that Latest will return one.
 func watch(v *runtimevar.Variable) {
-	ticker := time.NewTicker(1 * time.Second)
 	go func() {
 		for {
-			select {
-			case <-ticker.C:
-				snapshot, err := v.Watch(context.Background())
-				if err == runtimevar.ErrClosed {
-					// v has been closed; exit.
-					return
-				}
-				if err == nil {
-					// Casting to a string here because we used StringDecoder.
-					rc.write(vrb, snapshot.Value.(string))
-				} else {
-					fmt.Printf("Error loading config: %v", err)
-					// Even though there's been an error loading the config,
-					// v.Latest will continue to return the latest "good" value.
-				}
+			snapshot, err := v.Watch(context.Background())
+			if err == runtimevar.ErrClosed {
+				// v has been closed; exit.
+				return
+			}
+			if err == nil {
+				// Casting to a string here because we used StringDecoder.
+				rc.write(vrb, snapshot.Value.(string))
+			} else {
+				fmt.Printf("Error loading config: %v", err)
+				// Even though there's been an error loading the config,
+				// v.Latest will continue to return the latest "good" value.
 			}
 		}
 	}()
