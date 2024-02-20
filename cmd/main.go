@@ -92,7 +92,7 @@ func periodicallyPrint() {
 		for {
 			select {
 			case <-ticker.C:
-				fmt.Printf("(main)config key: %+v, value: %+v\n", vrb, rc.read(vrb))
+				fmt.Printf("(goroutine)config key: %+v, value: %+v\n", vrb, rc.read(vrb))
 			}
 		}
 	}()
