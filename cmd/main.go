@@ -89,11 +89,8 @@ func initRuntimeConfigValue(ctx context.Context, v *runtimevar.Variable) error {
 func periodicallyPrint() {
 	ticker := time.NewTicker(1 * time.Second)
 	go func() {
-		for {
-			select {
-			case <-ticker.C:
-				fmt.Printf("(goroutine)config key: %+v, value: %+v\n", vrb, rc.read(vrb))
-			}
+		for range ticker.C {
+			fmt.Printf("(goroutine)config key: %+v, value: %+v\n", vrb, rc.read(vrb))
 		}
 	}()
 }
