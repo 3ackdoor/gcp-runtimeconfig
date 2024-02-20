@@ -55,34 +55,14 @@ func main() {
 	}
 	defer v.Close()
 
-	err = initRuntimeConfigValue(ctx, v)
-	if err != nil {
-		e := fmt.Errorf("unable to get latest variable: %v", err)
-		fmt.Println(e)
-		return
-	}
-
-	periodicallyPrint()
 	watch(v)
-
-	fmt.Printf("(main)config key: %+v, value: %+v\n", vrb, rc.read(vrb))
+	periodicallyPrint()
 
 	var st time.Duration = 120 * time.Second
 	fmt.Printf("ending program in %v...\n", st)
 	time.Sleep(st)
 
 	os.Exit(0)
-}
-
-// initRuntimeConfigValue initializes the runtime config value.
-func initRuntimeConfigValue(ctx context.Context, v *runtimevar.Variable) error {
-	snapshot, err := v.Latest(ctx)
-	if err != nil {
-		return err
-	}
-
-	rc.write(vrb, snapshot.Value.(string))
-	return nil
 }
 
 // periodicallyPrint periodically prints the config value.
@@ -103,6 +83,9 @@ func periodicallyPrint() {
 //
 // Note that Latest always returns the latest "good" config, so seeing
 // an error from Watch doesn't mean that Latest will return one.
+//
+// Maybe add time.Sleep(3 * time.Second) after finished this function to make sure config is
+// loaded or call this function after finished executing v.Latest(ctx) and store the value in a variable.
 func watch(v *runtimevar.Variable) {
 	go func() {
 		for {
