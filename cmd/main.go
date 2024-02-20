@@ -16,6 +16,18 @@ type RuntimeConfig struct {
 	rw     sync.RWMutex
 }
 
+func (rc *RuntimeConfig) write(key string, value string) {
+	rc.rw.Lock()
+	rc.config[key] = value
+	rc.rw.Unlock()
+}
+
+func (rc *RuntimeConfig) read(key string) string {
+	rc.rw.RLock()
+	defer rc.rw.RUnlock()
+	return rc.config[key]
+}
+
 var rc *RuntimeConfig = &RuntimeConfig{
 	config: make(map[string]string, 1),
 }
@@ -29,14 +41,12 @@ var (
 func main() {
 	fmt.Println("starting program...")
 
-	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
-	defer cancel()
-
 	// runtimevar.OpenVariable creates a *runtimevar.Variable from a URL.
 	// The URL Host+Path are used as the GCP Runtime Configurator Variable key;
 	// see https://cloud.google.com/deployment-manager/runtime-configurator/
 	// for more details.
-
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
 	v, err := runtimevar.OpenVariable(ctx, "gcpruntimeconfig://projects/"+prj+"/configs/"+cfg+"/variables/"+vrb+"?decoder=string")
 	if err != nil {
 		e := fmt.Errorf("unable to open variable: %v", err)
@@ -45,18 +55,34 @@ func main() {
 	}
 	defer v.Close()
 
+	err = initRuntimeConfigValue(ctx, v)
+	if err != nil {
+		e := fmt.Errorf("unable to get latest variable: %v", err)
+		fmt.Println(e)
+		return
+	}
+
 	periodicallyPrint()
 	watch(v)
 
-	rc.rw.RLock()
-	fmt.Printf("(main)config: %+v\n", rc.config)
-	rc.rw.RUnlock()
+	fmt.Printf("(main)config key: %+v, value: %+v\n", vrb, rc.read(vrb))
 
-	var st time.Duration = 10 * time.Second
+	var st time.Duration = 30 * time.Second
 	fmt.Printf("ending program in %v...\n", st)
 	time.Sleep(st)
 
 	os.Exit(0)
+}
+
+// initRuntimeConfigValue initializes the runtime config value.
+func initRuntimeConfigValue(ctx context.Context, v *runtimevar.Variable) error {
+	snapshot, err := v.Latest(ctx)
+	if err != nil {
+		return err
+	}
+
+	rc.write(vrb, snapshot.Value.(string))
+	return nil
 }
 
 // periodicallyPrint periodically prints the config value.
@@ -66,9 +92,7 @@ func periodicallyPrint() {
 		for {
 			select {
 			case <-ticker.C:
-				rc.rw.RLock()
-				fmt.Printf("(goroutine)config: %+v\n", rc.config)
-				rc.rw.RUnlock()
+				fmt.Printf("(main)config key: %+v, value: %+v\n", vrb, rc.read(vrb))
 			}
 		}
 	}()
@@ -95,10 +119,7 @@ func watch(v *runtimevar.Variable) {
 				}
 				if err == nil {
 					// Casting to a string here because we used StringDecoder.
-					// fmt.Printf("New config: %+v", snapshot.Value.(string))
-					rc.rw.Lock()
-					rc.config[vrb] = snapshot.Value.(string)
-					rc.rw.Unlock()
+					rc.write(vrb, snapshot.Value.(string))
 				} else {
 					fmt.Printf("Error loading config: %v", err)
 					// Even though there's been an error loading the config,
