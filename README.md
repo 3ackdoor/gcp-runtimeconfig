@@ -8,5 +8,5 @@ GOOGLE_APPLICATION_CREDENTIALS=/ABSOLUTE_PATH_TO_SERVICE_ACCOUNT_JSON/service-ac
 
 ## Reference
 
-https://cloud.google.com/deployment-manager/runtime-configurator
+https://cloud.google.com/deployment-manager/runtime-configurator \
 https://gocloud.dev/howto/runtimevar/
