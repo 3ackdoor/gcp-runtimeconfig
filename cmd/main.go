@@ -20,6 +20,12 @@ var rc *RuntimeConfig = &RuntimeConfig{
 	config: make(map[string]string, 1),
 }
 
+var (
+	prj = os.Getenv("PROJECT")
+	cfg = os.Getenv("CONFIG")
+	vrb = os.Getenv("VARIABLE") // TODO: make this variable to point to the key of yml file on runtimeconfig or make a list of variables instead
+)
+
 func main() {
 	fmt.Println("starting program...")
 
@@ -30,9 +36,6 @@ func main() {
 	// The URL Host+Path are used as the GCP Runtime Configurator Variable key;
 	// see https://cloud.google.com/deployment-manager/runtime-configurator/
 	// for more details.
-	prj := os.Getenv("PROJECT")
-	cfg := os.Getenv("CONFIG")
-	vrb := os.Getenv("VARIABLE")
 
 	v, err := runtimevar.OpenVariable(ctx, "gcpruntimeconfig://projects/"+prj+"/configs/"+cfg+"/variables/"+vrb+"?decoder=string")
 	if err != nil {
@@ -94,7 +97,7 @@ func watch(v *runtimevar.Variable) {
 					// Casting to a string here because we used StringDecoder.
 					// fmt.Printf("New config: %+v", snapshot.Value.(string))
 					rc.rw.Lock()
-					rc.config["ex-var"] = snapshot.Value.(string)
+					rc.config[vrb] = snapshot.Value.(string)
 					rc.rw.Unlock()
 				} else {
 					fmt.Printf("Error loading config: %v", err)
